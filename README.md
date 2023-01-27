@@ -1,30 +1,11 @@
-Interactive CLI tool for installing and updating whaticket
-
-### download & setup
-
-Firstly, you need to download it:
-
+FAZENDO DOWNLOAD DO INSTALADOR & INICIANDO A PRIMEIRA INSTALAÇÃO (USAR SOMENTE PARA PRIMEIRA INSTALAÇÃO):
 
 ```bash
-sudo apt -y update && apt -y upgrade
-sudo apt install -y git
-git clone https://github.com/riservato-xyz/whaticket-installer.git
+sudo apt install -y git && git clone https://github.com/wiliamsilvacosta/whaticket_install_baileys.git && sudo chmod -R 777 whaticket_install_baileys && cd whaticket_install_baileys && sudo ./install_primaria
 ```
 
-Now, all you gotta do is making it executable:
-
+ACESSANDO DIRETORIO DO INSTALADOR & INICIANDO INSTALAÇÕES ADICIONAIS (USAR ESTE COMANDO PARA SEGUNDA OU MAIS INSTALAÇÃO:
 ```bash
-sudo chmod +x ./whaticket-installer/whaticket
+cd ./whaticket_install_baileys && sudo ./install_instancia
 ```
 
-### usage
-
-After downloading and making it executable, you need to **navigate into** the installer directory and **run the script with sudo**:
-
-```bash
-cd ./whaticket-installer
-```
-
-```bash
-sudo ./whaticket
-```

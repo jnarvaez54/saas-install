@@ -1,34 +1,34 @@
 #!/bin/bash
-# 
+#
 # functions for setting up app backend
-
 #######################################
-# creates mysql db using docker
+# creates REDIS db using docker
 # Arguments:
 #   None
 #######################################
-backend_mysql_create() {
+backend_redis_create() {
   print_banner
-  printf "${WHITE} 💻 Criando banco de dados...${GRAY_LIGHT}"
+  printf "${WHITE} 💻 Criando Redis & Banco Postgres...${GRAY_LIGHT}"
   printf "\n\n"
 
   sleep 2
 
   sudo su - root <<EOF
   usermod -aG docker deploy
-  docker run --name whaticketdb \
-                -e MYSQL_ROOT_PASSWORD=${mysql_root_password} \
-                -e MYSQL_DATABASE=${db_name} \
-                -e MYSQL_USER=${db_user} \
-                -e MYSQL_PASSWORD=${db_pass} \
-             --restart always \
-                -p 3306:3306 \
-                -d mariadb:latest \
-             --character-set-server=utf8mb4 \
-             --collation-server=utf8mb4_bin
+  docker run --name redis-${instancia_add} -p ${redis_port}:6379 --restart always --detach redis redis-server --requirepass ${mysql_root_password}
+  
+  sleep 2
+  sudo su - postgres
+  createdb ${instancia_add};
+  psql
+  CREATE USER ${instancia_add} SUPERUSER INHERIT CREATEDB CREATEROLE;
+  ALTER USER ${instancia_add} PASSWORD '${mysql_root_password}';
+  \q
+  exit
 EOF
 
-  sleep 2
+sleep 2
+
 }
 
 #######################################
@@ -54,21 +54,30 @@ backend_set_env() {
   frontend_url=https://$frontend_url
 
 sudo su - deploy << EOF
-  cat <<[-]EOF > /home/deploy/whaticket/backend/.env
+  cat <<[-]EOF > /home/deploy/${instancia_add}/backend/.env
 NODE_ENV=
 BACKEND_URL=${backend_url}
 FRONTEND_URL=${frontend_url}
 PROXY_PORT=443
-PORT=8080
+PORT=${backend_port}
 
 DB_HOST=localhost
-DB_DIALECT=
-DB_USER=${db_user}
-DB_PASS=${db_pass}
-DB_NAME=${db_name}
+DB_DIALECT=postgres
+DB_USER=${instancia_add}
+DB_PASS=${mysql_root_password}
+DB_NAME=${instancia_add}
 
 JWT_SECRET=${jwt_secret}
 JWT_REFRESH_SECRET=${jwt_refresh_secret}
+
+REDIS_URI=redis://:${mysql_root_password}@127.0.0.1:${redis_port}
+REDIS_OPT_LIMITER_MAX=1
+REGIS_OPT_LIMITER_DURATION=3000
+
+USER_LIMIT=${max_user}
+CONNECTIONS_LIMIT=${max_whats}
+CLOSED_SEND_BY_ME=true
+
 [-]EOF
 EOF
 
@@ -88,7 +97,7 @@ backend_node_dependencies() {
   sleep 2
 
   sudo su - deploy <<EOF
-  cd /home/deploy/whaticket/backend
+  cd /home/deploy/${instancia_add}/backend
   npm install
 EOF
 
@@ -108,8 +117,7 @@ backend_node_build() {
   sleep 2
 
   sudo su - deploy <<EOF
-  cd /home/deploy/whaticket/backend
-  npm install
+  cd /home/deploy/${instancia_add}/backend
   npm run build
 EOF
 
@@ -129,15 +137,19 @@ backend_update() {
   sleep 2
 
   sudo su - deploy <<EOF
-  cd /home/deploy/whaticket
+  cd /home/deploy/${empresa_atualizar}
+  pm2 stop ${empresa_atualizar}-backend
   git pull
-  cd /home/deploy/whaticket/backend
+  cd /home/deploy/${empresa_atualizar}/backend
   npm install
+  npm update -f
+  npm install @types/fs-extra
   rm -rf dist 
   npm run build
   npx sequelize db:migrate
   npx sequelize db:seed
-  pm2 restart all
+  pm2 start ${empresa_atualizar}-backend
+  pm2 save 
 EOF
 
   sleep 2
@@ -156,7 +168,7 @@ backend_db_migrate() {
   sleep 2
 
   sudo su - deploy <<EOF
-  cd /home/deploy/whaticket/backend
+  cd /home/deploy/${instancia_add}/backend
   npx sequelize db:migrate
 EOF
 
@@ -176,7 +188,7 @@ backend_db_seed() {
   sleep 2
 
   sudo su - deploy <<EOF
-  cd /home/deploy/whaticket/backend
+  cd /home/deploy/${instancia_add}/backend
   npx sequelize db:seed:all
 EOF
 
@@ -197,8 +209,8 @@ backend_start_pm2() {
   sleep 2
 
   sudo su - deploy <<EOF
-  cd /home/deploy/whaticket/backend
-  pm2 start dist/server.js --name whaticket-backend
+  cd /home/deploy/${instancia_add}/backend
+  pm2 start dist/server.js --name ${instancia_add}-backend
 EOF
 
   sleep 2
@@ -219,13 +231,11 @@ backend_nginx_setup() {
   backend_hostname=$(echo "${backend_url/https:\/\/}")
 
 sudo su - root << EOF
-
-cat > /etc/nginx/sites-available/whaticket-backend << 'END'
+cat > /etc/nginx/sites-available/${instancia_add}-backend << 'END'
 server {
   server_name $backend_hostname;
-
   location / {
-    proxy_pass http://127.0.0.1:8080;
+    proxy_pass http://127.0.0.1:${backend_port};
     proxy_http_version 1.1;
     proxy_set_header Upgrade \$http_upgrade;
     proxy_set_header Connection 'upgrade';
@@ -237,8 +247,7 @@ server {
   }
 }
 END
-
-ln -s /etc/nginx/sites-available/whaticket-backend /etc/nginx/sites-enabled
+ln -s /etc/nginx/sites-available/${instancia_add}-backend /etc/nginx/sites-enabled
 EOF
 
   sleep 2
